@@ -12,7 +12,7 @@ Update 2023-02-06: f and h support batch size speed up
 
 import tensorflow as tf
 import math
-tf_pi = tf.constant(math.pi, dtype=tf.float32)
+TF_PI = tf.constant(math.pi, dtype=tf.float32)
 
 #########################
 ### Design Parameters ###
