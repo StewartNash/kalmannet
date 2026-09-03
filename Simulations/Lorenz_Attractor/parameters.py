@@ -8,11 +8,11 @@ Update 2023-02-06: f and h support batch size speed up
 #import torch
 #import math
 #torch.pi = torch.acos(torch.zeros(1)).item() * 2 # which is 3.1415927410125732
-tf_pi = tf.constant(math.pi, dtype=tf.float32)
 #from torch import autograd
 
 import tensorflow as tf
 import math
+tf_pi = tf.constant(math.pi, dtype=tf.float32)
 
 #########################
 ### Design Parameters ###
