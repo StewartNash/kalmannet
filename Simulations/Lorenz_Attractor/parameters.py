@@ -5,10 +5,14 @@ Update 2023-02-06: f and h support batch size speed up
 """
 
 
-import torch
+#import torch
+#import math
+#torch.pi = torch.acos(torch.zeros(1)).item() * 2 # which is 3.1415927410125732
+tf_pi = tf.constant(math.pi, dtype=tf.float32)
+#from torch import autograd
+
+import tensorflow as tf
 import math
-torch.pi = torch.acos(torch.zeros(1)).item() * 2 # which is 3.1415927410125732
-from torch import autograd
 
 #########################
 ### Design Parameters ###
@@ -16,13 +20,15 @@ from torch import autograd
 m = 3
 n = 3
 variance = 0
-m1x_0 = torch.ones(m, 1) 
-m2x_0 = 0 * 0 * torch.eye(m)
+#m1x_0 = torch.ones(m, 1) 
+#m2x_0 = 0 * 0 * torch.eye(m)
+m1x_0 = tf.ones((m, 1), dtype=tf.float32)
+m2x_0 = tf.zeros((m, m), dtype=tf.float32)
 
 ### Decimation
-delta_t_gen =  1e-5
+delta_t_gen =  1E-5
 delta_t = 0.02
-ratio = delta_t_gen/delta_t
+ratio = delta_t_gen / delta_t
 
 ### Taylor expansion order
 J = 5 
@@ -31,50 +37,111 @@ J_mod = 2
 ### Angle of rotation in the 3 axes
 roll_deg = yaw_deg = pitch_deg = 1
 
-roll = roll_deg * (math.pi/180)
-yaw = yaw_deg * (math.pi/180)
-pitch = pitch_deg * (math.pi/180)
+roll = roll_deg * (math.pi / 180)
+yaw = yaw_deg * (math.pi / 180)
+pitch = pitch_deg * (math.pi / 180)
 
-RX = torch.tensor([
-                [1, 0, 0],
-                [0, math.cos(roll), -math.sin(roll)],
-                [0, math.sin(roll), math.cos(roll)]])
-RY = torch.tensor([
-                [math.cos(pitch), 0, math.sin(pitch)],
-                [0, 1, 0],
-                [-math.sin(pitch), 0, math.cos(pitch)]])
-RZ = torch.tensor([
-                [math.cos(yaw), -math.sin(yaw), 0],
-                [math.sin(yaw), math.cos(yaw), 0],
-                [0, 0, 1]])
-
-RotMatrix = torch.mm(torch.mm(RZ, RY), RX)
+#RX = torch.tensor([
+#                [1, 0, 0],
+#                [0, math.cos(roll), -math.sin(roll)],
+#                [0, math.sin(roll), math.cos(roll)]])
+RX = tf.constant([
+    [1, 0, 0],
+    [0, math.cos(roll), -math.sin(roll)],
+    [0, math.sin(roll), math.cos(roll)]
+], dtype=tf.float32)
+#RY = torch.tensor([
+#                [math.cos(pitch), 0, math.sin(pitch)],
+#                [0, 1, 0],
+#                [-math.sin(pitch), 0, math.cos(pitch)]])
+RY = tf.constant([
+    [math.cos(pitch), 0, math.sin(pitch)],
+    [0, 1, 0],
+    [-math.sin(pitch), 0, math.cos(pitch)]
+], dtype=tf.float32)
+#RZ = torch.tensor([
+#                [math.cos(yaw), -math.sin(yaw), 0],
+#                [math.sin(yaw), math.cos(yaw), 0],
+#                [0, 0, 1]])
+RZ = tf.constant([
+    [math.cos(yaw), -math.sin(yaw), 0],
+    [math.sin(yaw), math.cos(yaw), 0],
+    [0, 0, 1]
+], dtype=tf.float32)
+#RotMatrix = torch.mm(torch.mm(RZ, RY), RX)
+RotMatrix = tf.matmul(tf.matmul(RZ, RY), RX)
 
 ### Auxiliar MultiDimensional Tensor B and C (they make A --> Differential equation matrix)
-C = torch.tensor([[-10, 10,    0],
-                  [ 28, -1,    0],
-                  [  0,  0, -8/3]]).float()
+#C = torch.tensor([[-10, 10,    0],
+#                  [ 28, -1,    0],
+#                  [  0,  0, -8/3]]).float()
+C = tf.constant([
+    [-10, 10, 0],
+    [28, -1, 0],
+    [0, 0, -8 / 3]
+], dtype=tf.float32)
 
 ######################################################
 ### State evolution function f for Lorenz Atractor ###
 ######################################################
 ### f_gen is for dataset generation
 def f_gen(x, jacobian=False):
-    BX = torch.zeros([x.shape[0],m,m]).float().to(x.device) #[batch_size, m, m]
-    BX[:,1,0] = torch.squeeze(-x[:,2,:]) 
-    BX[:,2,0] = torch.squeeze(x[:,1,:])
-    Const = C.to(x.device)
-    A = torch.add(BX, Const)  
+    #BX = torch.zeros([x.shape[0],m,m]).float().to(x.device) #[batch_size, m, m]
+    #BX[:,1,0] = torch.squeeze(-x[:,2,:]) 
+    #BX[:,2,0] = torch.squeeze(x[:,1,:])
+    #Const = C.to(x.device)
+    #A = torch.add(BX, Const)  
     # Taylor Expansion for F    
-    F = torch.eye(m).to(x.device)
-    F = F.reshape((1, m, m)).repeat(x.shape[0], 1, 1) # [batch_size, m, m] identity matrix
-    for j in range(1,J+1):
-        F_add = (torch.matrix_power(A*delta_t_gen, j)/math.factorial(j))
-        F = torch.add(F, F_add)
+    #F = torch.eye(m).to(x.device)
+    #F = F.reshape((1, m, m)).repeat(x.shape[0], 1, 1) # [batch_size, m, m] identity matrix
+  
+    batch_size = tf.shape(x)[0]
+    # BX has shape [batch_size, m, m]
+    BX = tf.zeros(
+        [batch_size, m, m],
+        dtype=tf.float32
+    )
+    # Construct the two nonzero elements without in-place assignment.
+    bx_10 = -tf.squeeze(x[:, 2, :], axis=-1)
+    bx_20 = tf.squeeze(x[:, 1, :], axis=-1)
+    indices_10 = tf.stack([
+        tf.range(batch_size),
+        tf.fill([batch_size], 1),
+        tf.fill([batch_size], 0)
+    ], axis=1)
+    indices_20 = tf.stack([
+        tf.range(batch_size),
+        tf.fill([batch_size], 2),
+        tf.fill([batch_size], 0)
+    ], axis=1)
+    BX = tf.tensor_scatter_nd_update(BX, indices_10, bx_10)
+    BX = tf.tensor_scatter_nd_update(BX, indices_20, bx_20)
+    A = BX + C
+    # Batch of identity matrices: [batch_size, m, m]
+    F = tf.broadcast_to(
+        tf.eye(m, dtype=tf.float32),
+        [batch_size, m, m]
+    )
+  
+    #for j in range(1,J+1):
+    #    F_add = (torch.matrix_power(A*delta_t_gen, j)/math.factorial(j))
+    #    F = torch.add(F, F_add)
+    #if jacobian:
+    #    return torch.bmm(F, x), F
+    #else:
+    #    return torch.bmm(F, x)
+
+    # Taylor expansion
+    for j in range(1, J + 1):
+        F_add = (
+            tf.linalg.matrix_power(A * delta_t_gen, j)
+            / math.factorial(j)
+        )
+        F = F + F_add
     if jacobian:
-        return torch.bmm(F, x), F
+        return tf.matmul(F, x), F
     else:
-        return torch.bmm(F, x)
+        return tf.matmul(F, x)
 
 ### f will be fed to filters and KNet, note that the mismatch comes from delta_t
 def f(x, jacobian=False):
