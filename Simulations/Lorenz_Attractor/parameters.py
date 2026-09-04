@@ -202,22 +202,58 @@ def f(x, jacobian=False):
 
 ### fInacc will be fed to filters and KNet, note that the mismatch comes from delta_t and J_mod
 def fInacc(x, jacobian=False):
-    BX = torch.zeros([x.shape[0],m,m]).float().to(x.device) #[batch_size, m, m]
-    BX[:,1,0] = torch.squeeze(-x[:,2,:]) 
-    BX[:,2,0] = torch.squeeze(x[:,1,:]) 
-    Const = C.to(x.device)
-    A = torch.add(BX, Const)     
-    # Taylor Expansion for F    
-    F = torch.eye(m).to(x.device)
-    F = F.reshape((1, m, m))
-    F = F.repeat(x.shape[0], 1, 1) # [batch_size, m, m] identity matrix
-    for j in range(1,J_mod+1):
-        F_add = (torch.matrix_power(A*delta_t, j)/math.factorial(j))
-        F = torch.add(F, F_add)
+    #BX = torch.zeros([x.shape[0],m,m]).float().to(x.device) #[batch_size, m, m]
+    #BX[:,1,0] = torch.squeeze(-x[:,2,:]) 
+    #BX[:,2,0] = torch.squeeze(x[:,1,:]) 
+    #Const = C.to(x.device)
+    #A = torch.add(BX, Const)     
+    ## Taylor Expansion for F    
+    #F = torch.eye(m).to(x.device)
+    #F = F.reshape((1, m, m))
+    #F = F.repeat(x.shape[0], 1, 1) # [batch_size, m, m] identity matrix
+    #for j in range(1,J_mod+1):
+    #    F_add = (torch.matrix_power(A*delta_t, j)/math.factorial(j))
+    #    F = torch.add(F, F_add)
+
+    batch_size = tf.shape(x)[0]
+    BX = tf.zeros(
+        [batch_size, m, m],
+        dtype=tf.float32
+    )
+    bx_10 = -tf.squeeze(x[:, 2, :], axis=-1)
+    bx_20 = tf.squeeze(x[:, 1, :], axis=-1)
+    indices_10 = tf.stack([
+        tf.range(batch_size),
+        tf.fill([batch_size], 1),
+        tf.fill([batch_size], 0)
+    ], axis=1)
+    indices_20 = tf.stack([
+        tf.range(batch_size),
+        tf.fill([batch_size], 2),
+        tf.fill([batch_size], 0)
+    ], axis=1)
+    BX = tf.tensor_scatter_nd_update(BX, indices_10, bx_10)
+    BX = tf.tensor_scatter_nd_update(BX, indices_20, bx_20)
+    A = BX + C
+    F = tf.broadcast_to(
+        tf.eye(m, dtype=tf.float32),
+        [batch_size, m, m]
+    )
+    for j in range(1, J_mod + 1):
+        F = F + (
+            tf.linalg.matrix_power(A * delta_t, j)
+            / math.factorial(j)
+        )
+    y = tf.matmul(F, x)
+
+    #if jacobian:
+    #    return torch.bmm(F, x), F
+    #else:
+    #    return torch.bmm(F, x)
     if jacobian:
-        return torch.bmm(F, x), F
+        return y, F
     else:
-        return torch.bmm(F, x)
+        return y
 
 ### fInacc will be fed to filters and KNet, note that the mismatch comes from delta_t and rotation
 def fRotate(x, jacobian=False):
