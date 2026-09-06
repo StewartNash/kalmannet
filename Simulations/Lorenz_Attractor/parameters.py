@@ -286,27 +286,59 @@ def fRotate(x, jacobian=False):
         tf.fill([batch_size], 2),
         tf.fill([batch_size], 0)
     ], axis=1)
+    BX = tf.tensor_scatter_nd_update(BX, indices_10, bx_10)
+    BX = tf.tensor_scatter_nd_update(BX, indices_20, bx_20)
+    A = BX + C
+    # Batch of identity matrices: [batch_size, m, m]
+    F = tf.broadcast_to(
+        tf.eye(m, dtype=tf.float32),
+        [batch_size, m, m]
+    )
     
+    #for j in range(1,J+1):
+    #    F_add = (torch.matrix_power(A*delta_t, j)/math.factorial(j))
+    #    F = torch.add(F, F_add)
+    #F_rotated = torch.bmm(RotMatrix.reshape(1,m,m).repeat(x.shape[0],1,1),F)
+    for j in range(1, J + 1):
+        F = F + (
+            tf.linalg.matrix_power(A * delta_t, j)
+            / math.factorial(j)
+        )
+    F_rotated = tf.matmul(RotMatrix, F)
     
-    for j in range(1,J+1):
-        F_add = (torch.matrix_power(A*delta_t, j)/math.factorial(j))
-        F = torch.add(F, F_add)
-    F_rotated = torch.bmm(RotMatrix.reshape(1,m,m).repeat(x.shape[0],1,1),F)
+    #if jacobian:
+    #    return torch.bmm(F_rotated, x), F_rotated
+    #else:
+    #    return torch.bmm(F_rotated, x)
+    y = tf.matmul(F_rotated, x)
     if jacobian:
-        return torch.bmm(F_rotated, x), F_rotated
+        return y, F_rotated
     else:
-        return torch.bmm(F_rotated, x)
+        return y
 
 ##################################################
 ### Observation function h for Lorenz Atractor ###
 ##################################################
-H_design = torch.eye(n)
-H_Rotate = torch.mm(RotMatrix,H_design)
-H_Rotate_inv = torch.inverse(H_Rotate)
+#H_design = torch.eye(n)
+#H_Rotate = torch.mm(RotMatrix,H_design)
+#H_Rotate_inv = torch.inverse(H_Rotate)
+H_design = tf.eye(n, dtype=tf.float32)
+H_Rotate = tf.matmul(RotMatrix, H_design)
+H_Rotate_inv = tf.linalg.inv(H_Rotate)
 
 def h(x, jacobian=False):
-    H = H_design.to(x.device).reshape((1, n, n)).repeat(x.shape[0], 1, 1) # [batch_size, n, n] identity matrix   
-    y = torch.bmm(H,x)
+    #H = H_design.to(x.device).reshape((1, n, n)).repeat(x.shape[0], 1, 1) # [batch_size, n, n] identity matrix   
+    #y = torch.bmm(H,x)
+    #if jacobian:
+    #    return y, H
+    #else:
+    #    return y
+    batch_size = tf.shape(x)[0]
+    H = tf.broadcast_to(
+        H_design,
+        [batch_size, n, n]
+    )
+    y = tf.matmul(H, x)
     if jacobian:
         return y, H
     else:
@@ -316,37 +348,66 @@ def h_nonlinear(x):
     return toSpherical(x)
 
 def hRotate(x, jacobian=False):
-    H = H_Rotate.to(x.device).reshape((1, n, n)).repeat(x.shape[0], 1, 1)# [batch_size, n, n] rotated matrix
-    if jacobian:
-        return torch.bmm(H,x), H
-    else:
-        return torch.bmm(H,x)
-
-def h_nobatch(x, jacobian=False):
-    H = H_design.to(x.device)
-    y = torch.matmul(H,x)
+    #H = H_Rotate.to(x.device).reshape((1, n, n)).repeat(x.shape[0], 1, 1)# [batch_size, n, n] rotated matrix
+    #if jacobian:
+    #    return torch.bmm(H,x), H
+    #else:
+    #    return torch.bmm(H,x)
+    batch_size = tf.shape(x)[0]
+    H = tf.broadcast_to(
+        H_Rotate,
+        [batch_size, n, n]
+    )
+    y = tf.matmul(H, x)
     if jacobian:
         return y, H
     else:
         return y
+
+def h_nobatch(x, jacobian=False):
+    #H = H_design.to(x.device)
+    #y = torch.matmul(H,x)
+    #if jacobian:
+    #    return y, H
+    #else:
+    #    return y
+    H = H_design
+    y = tf.matmul(H, x)
+    if jacobian:
+        return y, H
+    else:
+        return y
+        
 ###############################################
 ### process noise Q and observation noise R ###
 ###############################################
 Q_non_diag = False
 R_non_diag = False
 
-Q_structure = torch.eye(m)
-R_structure = torch.eye(n)
+#Q_structure = torch.eye(m)
+#R_structure = torch.eye(n)
+Q_structure = tf.eye(m, dtype=tf.float32)
+R_structure = tf.eye(n, dytpe=tf.float32)
 
 if(Q_non_diag):
     q_d = 1
     q_nd = 1/2
-    Q = torch.tensor([[q_d, q_nd, q_nd],[q_nd, q_d, q_nd],[q_nd, q_nd, q_d]])
+    #Q = torch.tensor([[q_d, q_nd, q_nd],[q_nd, q_d, q_nd],[q_nd, q_nd, q_d]])
+    Q = tf.constant([
+        [q_d, q_nd, q_nd],
+        [q_nd, q_d, q_nd],
+        [q_nd, q_nd, q_d]
+    ], dtype=tf.float32)
 
 if(R_non_diag):
     r_d = 1
     r_nd = 1/2
-    R = torch.tensor([[r_d, r_nd, r_nd],[r_nd, r_d, r_nd],[r_nd, r_nd, r_d]])
+    #R = torch.tensor([[r_d, r_nd, r_nd],[r_nd, r_d, r_nd],[r_nd, r_nd, r_d]])
+    R = tf.constant([
+        [r_d, r_nd, r_nd],
+        [r_nd, r_d, r_nd],
+        [r_nd, r_nd, r_d]
+    ], dtype=tf.float32)
 
 ##################################
 ### Utils for non-linear cases ###
@@ -376,30 +437,63 @@ def toSpherical(cart):
     input cart (torch.tensor): [batch_size, m, 1] or [batch_size, m]
     output spher (torch.tensor): [batch_size, n, 1]
     """
-    rho = torch.linalg.norm(cart,dim=1).reshape(cart.shape[0], 1)# [batch_size, 1]
-    phi = torch.atan2(cart[:, 1, ...], cart[:, 0, ...]).reshape(cart.shape[0], 1) # [batch_size, 1]
-    phi = phi + (phi < 0).type_as(phi) * (2 * torch.pi)
+    #rho = torch.linalg.norm(cart,dim=1).reshape(cart.shape[0], 1)# [batch_size, 1]
+    #phi = torch.atan2(cart[:, 1, ...], cart[:, 0, ...]).reshape(cart.shape[0], 1) # [batch_size, 1]
+    #phi = phi + (phi < 0).type_as(phi) * (2 * torch.pi)
+    rho = tf.linalg.norm(cart, axis=1)
+    rho = tf.reshape(rho, [-1, 1])
+    phi = tf.atan2(
+        cart[:, 1, ...],
+        cart[:, 0, ...]
+    )
+    phi = tf.reshape(phi, [-1, 1])
+    phi = tf.where(
+        phi < 0,
+        phi + 2.0 * math.pi,
+        phi
+    )
+    z = tf.squeeze(cart[:, 2, ...], axis=-1)
+    rho_squeezed = tf.squeeze(rho, axis=-1)
     
-    theta = torch.div(torch.squeeze(cart[:, 2, ...]), torch.squeeze(rho))
-    theta = torch.acos(theta).reshape(cart.shape[0], 1) # [batch_size, 1]
+    #theta = torch.div(torch.squeeze(cart[:, 2, ...]), torch.squeeze(rho))
+    #theta = torch.acos(theta).reshape(cart.shape[0], 1) # [batch_size, 1]
+    theta = tf.acos(z / rho_squeezed)
+    theta = tf.reshape(theta, [1, -1])
 
-    spher = torch.cat([rho, theta, phi], dim=1).reshape(cart.shape[0],3,1) # [batch_size, n, 1]
+    #spher = torch.cat([rho, theta, phi], dim=1).reshape(cart.shape[0],3,1) # [batch_size, n, 1]
+    spher = tf.concat(
+        [rho, theta, phi],
+        axis=1
+    )
 
-    return spher
+    #return spher
+    return tf.reshape(shper, [-1, 3, 1])
 
 def toCartesian(sphe):
     """
     input sphe (torch.tensor): [batch_size, n, 1] or [batch_size, n]
     output cart (torch.tensor): [batch_size, n]
     """
+    #rho = sphe[:, 0, ...]
+    #theta = sphe[:, 1, ...]
+    #phi = sphe[:, 2, ...]
     rho = sphe[:, 0, ...]
     theta = sphe[:, 1, ...]
     phi = sphe[:, 2, ...]
 
-    x = (rho * torch.sin(theta) * torch.cos(phi)).reshape(sphe.shape[0],1)
-    y = (rho * torch.sin(theta) * torch.sin(phi)).reshape(sphe.shape[0],1)
-    z = (rho * torch.cos(theta)).reshape(sphe.shape[0],1)
+    #x = (rho * torch.sin(theta) * torch.cos(phi)).reshape(sphe.shape[0],1)
+    #y = (rho * torch.sin(theta) * torch.sin(phi)).reshape(sphe.shape[0],1)
+    #z = (rho * torch.cos(theta)).reshape(sphe.shape[0],1)
+    x = (rho * tf.sin(theta) * tf.cos(phi))
+    y = (rho * tf.sin(tehta) * tf.sin(phi))
+    z = rho * tf.cos(theta)
 
-    cart = torch.cat([x,y,z],dim=1).reshape(cart.shape[0],3,1) # [batch_size, n, 1]
+    x = tf.reshape(x, [-1, 1])
+    y = tf.reshape(y, [-1, 1])
+    z = tf.reshape(z, [-1, 1])
 
-    return cart
+    #cart = torch.cat([x,y,z],dim=1).reshape(cart.shape[0],3,1) # [batch_size, n, 1]
+    cart = tf.concat([x, y, z], axis=1)
+
+    #return cart
+    return tf.reshape(cart, [-1, 3, 1])
