@@ -244,12 +244,12 @@ def fInacc(x, jacobian=False):
             tf.linalg.matrix_power(A * delta_t, j)
             / math.factorial(j)
         )
-    y = tf.matmul(F, x)
 
     #if jacobian:
     #    return torch.bmm(F, x), F
     #else:
     #    return torch.bmm(F, x)
+    y = tf.matmul(F, x)    
     if jacobian:
         return y, F
     else:
