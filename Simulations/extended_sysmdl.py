@@ -13,8 +13,9 @@
 2 Generate datasets for non-linear cases
 """
 
-import torch
-from torch.distributions.multivariate_normal import MultivariateNormal
+#import torch
+#from torch.distributions.multivariate_normal import MultivariateNormal
+import tensorflow as tf
 
 class SystemModel:
 
@@ -42,18 +43,35 @@ class SystemModel:
         #########################
         ### Covariance Priors ###
         #########################
+        #if prior_Q is None:
+        #    self.prior_Q = torch.eye(self.m)
+        #else:
+        #    self.prior_Q = prior_Q
+        #
+        #if prior_Sigma is None:
+        #    self.prior_Sigma = torch.zeros((self.m, self.m))
+        #else:
+        #    self.prior_Sigma = prior_Sigma
+        #
+        #if prior_S is None:
+        #    self.prior_S = torch.eye(self.n)
+        #else:
+        #    self.prior_S = prior_S
         if prior_Q is None:
-            self.prior_Q = torch.eye(self.m)
+            self.prior_Q = tf.eye(self.m, dtype=tf.float32)
         else:
             self.prior_Q = prior_Q
 
         if prior_Sigma is None:
-            self.prior_Sigma = torch.zeros((self.m, self.m))
+            self.prior_Sigma = tf.zeros(
+                (self.m, self.m),
+                dtype=tf.float32
+            )
         else:
             self.prior_Sigma = prior_Sigma
 
         if prior_S is None:
-            self.prior_S = torch.eye(self.n)
+            self.prior_S = tf.eye(self.n, dtype=tf.float32)
         else:
             self.prior_S = prior_S
 
@@ -77,7 +95,6 @@ class SystemModel:
     def UpdateCovariance_Matrix(self, Q, R):
 
         self.Q = Q
-
         self.R = R
 
     #########################
