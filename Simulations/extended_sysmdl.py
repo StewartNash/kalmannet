@@ -159,27 +159,43 @@ class SystemModel:
             ################
             yt = self.h(xt)
             # Observation Noise         
-            if self.n == 1: # 1 dim noise
-                er = torch.normal(mean=0, std=R_gen)
-                # Additive Observation Noise
-                yt = torch.add(yt,er)
-            else:  
-                mean = torch.zeros([self.n])            
-                distrib = MultivariateNormal(loc=mean, covariance_matrix=R_gen)
-                er = distrib.rsample()
-                er = torch.reshape(er[:], yt.size())       
-                # Additive Observation Noise
-                yt = torch.add(yt,er)
+            #if self.n == 1: # 1 dim noise
+            #    er = torch.normal(mean=0, std=R_gen)
+            #    # Additive Observation Noise
+            #    yt = torch.add(yt,er)
+            #else:  
+            #    mean = torch.zeros([self.n])            
+            #    distrib = MultivariateNormal(loc=mean, covariance_matrix=R_gen)
+            #    er = distrib.rsample()
+            #    er = torch.reshape(er[:], yt.size())       
+            #    # Additive Observation Noise
+            #    yt = torch.add(yt,er)
+            if self.n == 1:
+                er = tf.random.normal(
+                    shape=(),
+                    mean=0.0,
+                    stddev=R_gen
+                )
+                # Additive observation noise
+                yt = yt + er
+            else:
+                mean = tf.zeros([self.n])
+                L = tf.linalg.cholesky(R_gen)
+                v = tf.random.normal(shape=(self.n,), dtype=tf.float32)
+                er = tf.matmul(L, tf.reshape(v, (self.n, 1)))
+                yt = yt + er
             
             ########################
             ### Squeeze to Array ###
             ########################
 
             # Save Current State to Trajectory Array
-            self.x[:, t] = torch.squeeze(xt,1)
+            #self.x[:, t] = torch.squeeze(xt,1)
+            self.x[:, t].assign(tf.squeeze(xt, axis=1))
 
             # Save Current Observation to Trajectory Array
-            self.y[:, t] = torch.squeeze(yt,1)
+            #self.y[:, t] = torch.squeeze(yt,1)
+            self.y[:, t].assign(tf.squeeze(yt, axis=1))
 
             ################################
             ### Save Current to Previous ###
