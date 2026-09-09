@@ -101,10 +101,14 @@ class SystemModel:
     ### Generate Sequence ###
     #########################
     def GenerateSequence(self, Q_gen, R_gen, T):
-        # Pre allocate an array for current state
-        self.x = torch.zeros(size=[self.m, T])
-        # Pre allocate an array for current observation
-        self.y = torch.zeros(size=[self.n, T])
+        ## Pre allocate an array for current state
+        #self.x = torch.zeros(size=[self.m, T])
+        ## Pre allocate an array for current observation
+        #self.y = torch.zeros(size=[self.n, T])
+        
+        self.x = tf.Variable(tf.zeros((self.m, T), dtype=tf.float32))
+        self.y = tf.Variable(tf.zeros((self.n, T), dtype=tf.float32))
+        
         # Set x0 to be x previous
         self.x_prev = self.m1x_0
         xt = self.x_prev
@@ -115,21 +119,40 @@ class SystemModel:
             ########################
             #### State Evolution ###
             ########################   
-            if torch.equal(Q_gen,torch.zeros(self.m,self.m)):# No noise
-                 xt = self.f(self.x_prev)   
-            elif self.m == 1: # 1 dim noise
+            #if torch.equal(Q_gen,torch.zeros(self.m,self.m)):# No noise
+            #     xt = self.f(self.x_prev)   
+            #elif self.m == 1: # 1 dim noise
+            #    xt = self.f(self.x_prev)
+            #    eq = torch.normal(mean=0, std=Q_gen)
+            #    # Additive Process Noise
+            #    xt = torch.add(xt,eq)
+            #else:            
+            #    xt = self.f(self.x_prev)
+            #    mean = torch.zeros([self.m])              
+            #    distrib = MultivariateNormal(loc=mean, covariance_matrix=Q_gen)
+            #    eq = distrib.rsample()
+            #    eq = torch.reshape(eq[:], xt.size())
+            #    # Additive Process Noise
+            #    xt = torch.add(xt,eq)
+
+            if tf.reduce_all(tf.equal(Q_gen, tf.zeros_like(Q_gen))):
                 xt = self.f(self.x_prev)
-                eq = torch.normal(mean=0, std=Q_gen)
-                # Additive Process Noise
-                xt = torch.add(xt,eq)
-            else:            
+            elif self.m == 1:
                 xt = self.f(self.x_prev)
-                mean = torch.zeros([self.m])              
-                distrib = MultivariateNormal(loc=mean, covariance_matrix=Q_gen)
-                eq = distrib.rsample()
-                eq = torch.reshape(eq[:], xt.size())
-                # Additive Process Noise
-                xt = torch.add(xt,eq)
+                eq = tf.random.normal(
+                    shape=(),
+                    mean=0.0,
+                    stddev=Q_gen
+                )
+                # Additive process noise
+                xt = xt + eq
+            else:
+                xt = self.f(self.x_prev)
+                mean = tf.zeros([self.m])
+                L = tf.linalg.cholesky(Q_gen)
+                z = tf.random.normal(shape=(self.m,), dtype=tf.float32)
+                eq = tf.matmul(L, tf.reshape(z, (self.m, 1)))
+                xt = xt + eq
 
             ################
             ### Emission ###
