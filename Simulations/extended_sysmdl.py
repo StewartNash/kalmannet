@@ -209,34 +209,61 @@ class SystemModel:
     def GenerateBatch(self, args, size, T, randomInit=False):
         if(randomInit):
             # Allocate Empty Array for Random Initial Conditions
-            self.m1x_0_rand = torch.zeros(size, self.m, 1)
+            #self.m1x_0_rand = torch.zeros(size, self.m, 1)
+            self.m1x_0_rand = tf.Variable(tf.zeros((size, self.m, 1), dtype=tf.float32))
             if args.distribution == 'uniform':
                 ### if Uniform Distribution for random init
                 for i in range(size):           
-                    initConditions = torch.rand_like(self.m1x_0) * args.variance
+                    #initConditions = torch.rand_like(self.m1x_0) * args.variance
+                    initConditions = (
+                        tf.random.uniform(
+                            shape=tf.shape(self.m1x_0),
+                            minval=0.0,
+                            maxval=1.0
+                        ) * args.variance
+                    )
                     self.m1x_0_rand[i,:,0:1] = initConditions.view(self.m,1)     
             
             elif args.distribution == 'normal':
                 ### if Normal Distribution for random init
                 for i in range(size):
-                    distrib = MultivariateNormal(loc=torch.squeeze(self.m1x_0), covariance_matrix=self.m2x_0)
-                    initConditions = distrib.rsample().view(self.m,1)
+                    #distrib = MultivariateNormal(loc=torch.squeeze(self.m1x_0), covariance_matrix=self.m2x_0)
+                    #initConditions = distrib.rsample().view(self.m,1)
+                    z = tf.random.normal(shape=(self.m,), dtype=tf.float32)
+                    L = tf.linalg.cholesky(self.m2x_0)
+                    initConditions = (
+                        tf.reshape(self.m1x_0, (self.m,))
+                        + tf.matmul(L, tf.reshape(z, (self.m, 1)))[:, 0]
+                    )
                     self.m1x_0_rand[i,:,0:1] = initConditions
             else:
                 raise ValueError('args.distribution not supported!')
             
             self.Init_batched_sequence(self.m1x_0_rand, self.m2x_0)### for sequence generation
         else: # fixed init
-            initConditions = self.m1x_0.view(1,self.m,1).expand(size,-1,-1)
+            #initConditions = self.m1x_0.view(1,self.m,1).expand(size,-1,-1)
+            initConditions = tf.broadcast_to(
+                tf.reshape(self.m1x_0, (1, self.m, 1)),
+                (size, self.m, 1)
+            )
             self.Init_batched_sequence(initConditions, self.m2x_0)### for sequence generation
     
         if(args.randomLength):
-            # Allocate Array for Input and Target (use zero padding)
-            self.Input = torch.zeros(size, self.n, args.T_max)
-            self.Target = torch.zeros(size, self.m, args.T_max)
-            self.lengthMask = torch.zeros((size,args.T_max), dtype=torch.bool)# init with all false
+            ## Allocate Array for Input and Target (use zero padding)
+            #self.Input = torch.zeros(size, self.n, args.T_max)
+            #self.Target = torch.zeros(size, self.m, args.T_max)
+            #self.lengthMask = torch.zeros((size,args.T_max), dtype=torch.bool)# init with all false
+            self.Input = tf.zeros(size, self.n, args.T_max)
+            self.Target = tf.zeros(size, self.m, args.T_max)
+            self.lengthMask = tf.Variable(tf.zeros((size, args.T_max), dtype=tf.bool))
             # Init Sequence Lengths
-            T_tensor = torch.round((args.T_max-args.T_min)*torch.rand(size)).int()+args.T_min # Uniform distribution [100,1000]
+            #T_tensor = torch.round((args.T_max-args.T_min)*torch.rand(size)).int()+args.T_min # Uniform distribution [100,1000]
+            T_tensor = (
+                tf.cast(
+                    tf.round((args.T_max - args.T_min) * tf.random.uniform((size,))),
+                    tf.int32
+                ) + args.T_min
+            )
             for i in range(0, size):
                 # Generate Sequence
                 self.GenerateSequence(self.Q, self.R, T_tensor[i].item())
@@ -249,9 +276,11 @@ class SystemModel:
 
         else:
             # Allocate Empty Array for Input
-            self.Input = torch.empty(size, self.n, T)
+            #self.Input = torch.empty(size, self.n, T)
+            self.Input = tf.raw_ops.Empty(shape=[size, self.n, T], dtype=tf.float32)
             # Allocate Empty Array for Target
-            self.Target = torch.empty(size, self.m, T)
+            #self.Target = torch.empty(size, self.m, T)
+            self.Target = tf.raw_ops.Empty(shape=[size, self.m, T], dtype=tf.float32)
 
             # Set x0 to be x previous
             self.x_prev = self.m1x_0_batch
@@ -280,31 +309,46 @@ class SystemModel:
                 ################
                 ### Emission ###
                 ################
-                # Observation Noise
-                if torch.equal(self.R,torch.zeros(self.n,self.n)):# No noise
+                ## Observation Noise
+                #if torch.equal(self.R,torch.zeros(self.n,self.n)):# No noise
+                if tf.reduce_all(tf.math.equal(self.R, tf.zeros([self.n, self.n]))).numpy():
                     yt = self.h(xt)
                 elif self.n == 1: # 1 dim noise
                     yt = self.h(xt)
-                    er = torch.normal(mean=torch.zeros(size), std=self.R).view(size,1,1)
-                    # Additive Observation Noise
-                    yt = torch.add(yt,er)
+                    #er = torch.normal(mean=torch.zeros(size), std=self.R).view(size,1,1)
+                    ## Additive Observation Noise
+                    #yt = torch.add(yt,er)
+                    er = tf.random.normal(
+                        shape=size,
+                        mean=0.0,
+                        stddev=self.R
+                    )
+                    yt = yt + er
                 else:  
                     yt =  self.h(xt)
-                    mean = torch.zeros([size,self.n])            
-                    distrib = MultivariateNormal(loc=mean, covariance_matrix=self.R)
-                    er = distrib.rsample().view(size,self.n,1)          
-                    # Additive Observation Noise
-                    yt = torch.add(yt,er)
+                    #mean = torch.zeros([size,self.n])            
+                    #distrib = MultivariateNormal(loc=mean, covariance_matrix=self.R)
+                    #er = distrib.rsample().view(size,self.n,1)          
+                    ## Additive Observation Noise
+                    #yt = torch.add(yt,er)
+                    mean = tf.zeros([size, self.n])
+                    v = tf.random.normal(shape=(size, self.n))
+                    L = tf.linalg.cholesky(self.R)
+                    er = tf.einsum('ij,bj->bi', L, v)
+                    er = tf.reshape(er, (size, self.n, 1))
+                    yt = yt + er
 
                 ########################
                 ### Squeeze to Array ###
                 ########################
 
                 # Save Current State to Trajectory Array
-                self.Target[:, :, t] = torch.squeeze(xt,2)
+                #self.Target[:, :, t] = torch.squeeze(xt,2)
+                self.Target[:, :, t].assign(tf.squeeze(xt, axis=2))
 
                 # Save Current Observation to Trajectory Array
-                self.Input[:, :, t] = torch.squeeze(yt,2)
+                #self.Input[:, :, t] = torch.squeeze(yt,2)
+                self.Input[:, :, t].assign(tf.squeeze(yt, axis=2))
 
                 ################################
                 ### Save Current to Previous ###
