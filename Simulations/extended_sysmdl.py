@@ -291,21 +291,34 @@ class SystemModel:
                 ########################
                 #### State Evolution ###
                 ########################   
-                if torch.equal(self.Q,torch.zeros(self.m,self.m)):# No noise
+                #if torch.equal(self.Q,torch.zeros(self.m,self.m)):# No noise
+                if tf.reduce_all(tf.math.equal(self.Q, tf.zeros([self.m, self.m]))).numpy():
                     xt = self.f(self.x_prev)
                 elif self.m == 1: # 1 dim noise
                     xt = self.f(self.x_prev)
-                    eq = torch.normal(mean=torch.zeros(size), std=self.Q).view(size,1,1)
+                    #eq = torch.normal(mean=torch.zeros(size), std=self.Q).view(size,1,1)
+                    eq = tf.random.normal(
+                        shape=size,
+                        mean=0.0,
+                        stddev=self.Q
+                    )
                     # Additive Process Noise
-                    xt = torch.add(xt,eq)
+                    #xt = torch.add(xt,eq)
+                    xt = xt + eq
                 else:            
                     xt = self.f(self.x_prev)
-                    mean = torch.zeros([size, self.m])              
-                    distrib = MultivariateNormal(loc=mean, covariance_matrix=self.Q)
-                    eq = distrib.rsample().view(size,self.m,1)
-                    # Additive Process Noise
-                    xt = torch.add(xt,eq)
-
+                    #mean = torch.zeros([size, self.m])
+                    #distrib = MultivariateNormal(loc=mean, covariance_matrix=self.Q)
+                    #eq = distrib.rsample().view(size,self.m,1)
+                    ## Additive Process Noise
+                    #xt = torch.add(xt,eq)
+                    mean = tf.zeros([size, self.m])
+                    z = tf.random.normal(shape=(size, self.m))
+                    L = tf.linalg.cholesky(self.Q)
+                    eq = tf.einsum('ij,bj->bi', L, z)
+                    eq = tf.reshape(eq, (size, self.m, 1))
+                    xt = xt + eq
+                    
                 ################
                 ### Emission ###
                 ################
