@@ -1,4 +1,4 @@
-# kalmannet
+# KalmanNet
 TensorFlow/Keras implementation of the KalmanNet filter
 
 ## To-Do
