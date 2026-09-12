@@ -2,7 +2,8 @@
 The file contains utility functions for the simulations.
 """
 
-import torch
+#import torch
+import tensorflow as tf
 
 def DataGen(args, SysModel_data, fileName):
 
@@ -43,11 +44,35 @@ def DataGen(args, SysModel_data, fileName):
     #################
     ### Save Data ###
     #################
-    if(args.randomLength):
-        torch.save([train_input, train_target, cv_input, cv_target, test_input, test_target,train_init, cv_init, test_init, train_lengthMask,cv_lengthMask,test_lengthMask], fileName)
+    #if(args.randomLength):
+    #    torch.save([train_input, train_target, cv_input, cv_target, test_input, test_target,train_init, cv_init, test_init, train_lengthMask,cv_lengthMask,test_lengthMask], fileName)
+    #else:
+    #    torch.save([train_input, train_target, cv_input, cv_target, test_input, test_target,train_init, cv_init, test_init], fileName)
+    if args.randomLength:
+        data_dict = {
+            "train_input": train_input, "train_target": train_target,
+            "cv_input": cv_input, "cv_target": cv_target,
+            "test_input": test_input, "test_target": test_target,
+            "train_init": train_init, "cv_init": cv_init, "test_init": test_init,
+            "train_lengthMask": train_lengthMask, "cv_lengthMask": cv_lengthMask, "test_lengthMask": test_lengthMask
+        }
     else:
-        torch.save([train_input, train_target, cv_input, cv_target, test_input, test_target,train_init, cv_init, test_init], fileName)
-    
+        data_dict = {
+            "train_input": train_input, "train_target": train_target,
+            "cv_input": cv_input, "cv_target": cv_target,
+            "test_input": test_input, "test_target": test_target,
+            "train_init": train_init, "cv_init": cv_init, "test_init": test_init
+        }
+    dataset = tf.data.Dataset.from_tensors(data_dict)
+    tf.data.Dataset.save(dataset, fileName)
+
+    # Loading the dataset - TensorFlow
+    #loaded_dataset = tf.data.Dataset.load(fileName)
+    #for data in loaded_dataset:
+    #    current_train_input = data["train_input"]
+    #    if "train_lengthMask" in data:
+    #        current_train_lengthMask = data["train_lengthMask"]
+
 def DecimateData(all_tensors, t_gen,t_mod, offset=0):
     
     # ratio: defines the relation between the sampling time of the true process and of the model (has to be an integer)
